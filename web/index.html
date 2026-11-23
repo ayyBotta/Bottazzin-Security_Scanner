@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security Scanner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <svg class="brand__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/>
+          <path class="brand__check" d="m8.5 12 2.5 2.5 4.5-5"/>
+        </svg>
+        <span>Security Scanner</span>
+      </div>
+      <span class="topbar__note">Analisi passiva di domini web</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="search">
+      <h1>Quanto e' sicuro questo dominio?</h1>
+      <p class="muted">Controlla HTTPS, certificato, header di sicurezza, cookie, CORS e record DNS/email.
+        Il punteggio va da 0 (gravemente insicuro) a 100 (sicuro).</p>
+      <form id="scan-form" class="search__form" autocomplete="off">
+        <input id="domain" name="domain" type="text" placeholder="es. example.com" required
+               spellcheck="false" aria-label="Dominio da analizzare">
+        <button id="scan-btn" type="submit">Analizza</button>
+      </form>
+      <p class="hint muted">Analizza solo domini di cui sei proprietario o per cui hai l'autorizzazione.</p>
+    </section>
+
+    <section id="loading" class="card loading" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <strong>Scansione di <span id="loading-domain"></span> in corso...</strong>
+        <p class="muted">Puo' richiedere fino a 30 secondi. Tempo trascorso: <span id="elapsed">0</span> s</p>
+      </div>
+    </section>
+
+    <section id="error" class="card error" hidden role="alert"></section>
+
+    <section id="lookalike" class="card lookalike" hidden>
+      <div class="lookalike__head">
+        <h2>Verifica di legittimita'</h2>
+        <span id="la-verdict" class="badge"></span>
+      </div>
+      <p id="la-description" class="lookalike__desc"></p>
+      <dl class="facts">
+        <dt>Dominio</dt><dd id="la-domain"></dd>
+        <dt id="la-target-label">Imita</dt><dd id="la-target"></dd>
+        <dt>Tecnica</dt><dd id="la-technique"></dd>
+        <dt>Eta'</dt><dd id="la-age"></dd>
+        <dt>Popolarita'</dt><dd id="la-rank"></dd>
+        <dt id="la-claim-label">Si presenta come</dt><dd id="la-claim"></dd>
+      </dl>
+      <div id="la-chars-wrap" hidden>
+        <h3>Caratteri ingannevoli</h3>
+        <div class="chars-scroll">
+          <table class="chars">
+            <thead><tr><th>Carattere</th><th>Sembra</th><th>Codice</th><th>Nome Unicode</th></tr></thead>
+            <tbody id="la-chars"></tbody>
+          </table>
+        </div>
+      </div>
+      <h3>Perche'</h3>
+      <ul id="la-reasons" class="reasons"></ul>
+      <h3>Fonti</h3>
+      <ul id="la-sources" class="sources muted small"></ul>
+      <p class="muted small">"Non sospetto" significa che il dominio non imita marchi noti e che la pagina
+        non si spaccia per un altro marchio: non e' una certificazione del sito.</p>
+    </section>
+
+    <section id="results" hidden>
+      <div class="card summary">
+        <div class="gauge" id="gauge">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="gauge__track" cx="60" cy="60" r="52"/>
+            <circle class="gauge__value" id="gauge-value" cx="60" cy="60" r="52"/>
+          </svg>
+          <div class="gauge__label">
+            <span id="score">0</span>
+            <small>/100</small>
+          </div>
+        </div>
+        <div class="summary__text">
+          <p class="muted summary__domain" id="result-domain"></p>
+          <p class="summary__level">Livello di rischio: <span id="level" class="badge"></span></p>
+          <p id="level-desc"></p>
+          <ul id="caps" class="caps"></ul>
+          <div id="severity-counts" class="chips"></div>
+          <div class="actions">
+            <button type="button" class="ghost" id="download-json">Scarica JSON</button>
+            <button type="button" class="ghost" id="rescan">Ripeti scansione</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card redirect" id="redirect-card" hidden>
+        <h2>Dominio di solo redirect: il sito vero e' un altro</h2>
+        <p id="redirect-text"></p>
+        <div id="destination" class="destination"></div>
+        <p class="muted small">Il punteggio qui sopra riguarda solo il redirect: HTTPS, HSTS, certificato,
+          versioni TLS, primo salto da http:// a https://, cookie e banner. La risposta 3xx non ha
+          contenuto, quindi CSP, clickjacking, nosniff, Referrer-Policy e Permissions-Policy sono "non
+          applicabili": nessuna penalita' e nessun punto.</p>
+      </div>
+
+      <div class="card redirect redirect--warn" id="botblock-card" hidden>
+        <h2>Risultato non affidabile: richiesta bloccata</h2>
+        <p id="botblock-text"></p>
+        <p class="muted small">Header, cookie e banner di una pagina di blocco o di errore non sono quelli
+          del sito, quindi non vengono valutati e non danno punti: il punteggio si basa su cio' che si puo'
+          verificare (HTTPS/TLS, certificato, legittimita', DNS/Email). La protezione anti-bot in se' non e'
+          un problema di sicurezza.</p>
+      </div>
+
+      <div class="card" id="chains-card" hidden>
+        <h2>Catena dei redirect</h2>
+        <p class="muted small">Gli header si leggono sull'ultima risposta servita dal dominio stesso.</p>
+        <div id="chains"></div>
+      </div>
+
+      <div class="card">
+        <h2>Sicurezza per categoria</h2>
+        <div id="categories" class="categories"></div>
+      </div>
+
+      <div class="card">
+        <h2>Fattori di pericolosita' <span class="count" id="findings-count"></span></h2>
+        <p class="muted small">Ordinati per gravita' e per punti persi.</p>
+        <div id="findings" class="findings"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Controlli superati <span class="count" id="passed-count"></span></h2>
+          <ul id="passed" class="checklist"></ul>
+        </div>
+        <div class="card" id="skipped-card">
+          <h2>Esclusi dal calcolo <span class="count" id="skipped-count"></span></h2>
+          <p class="muted small">Non contano nel punteggio, ne' a favore ne' contro. Per ogni gruppo
+            e' spiegato il motivo.</p>
+          <div id="skipped" class="skip-groups"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="history-section" class="card" hidden>
+      <h2>Scansioni recenti</h2>
+      <ul id="history" class="history"></ul>
+    </section>
+  </main>
+
+  <footer class="wrap footer muted small">
+    Scanner passivo: effettua solo poche richieste standard alla homepage e query DNS pubbliche.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
